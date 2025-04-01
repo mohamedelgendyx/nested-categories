@@ -56,10 +56,10 @@ Resources:
         Fn::Base64: |
           #!/bin/bash
           # Update system
-          yum update -y
+          apt update -y
 
           # Install Docker
-          yum install -y docker
+          apt install -y docker
           systemctl start docker
           systemctl enable docker
 
@@ -69,50 +69,11 @@ Resources:
 
           # Create directory for docker-compose file
           mkdir -p /app
-
-          # Create docker-compose.yaml
-          cat << 'EOF' > /app/docker-compose.yaml
-          # Your docker-compose content goes here
-          services:
-            app:
-              build:
-                context: .
-              container_name: nested_categories
-              ports:
-                - "8000:8000"
-              depends_on:
-                - db
-              volumes:
-                - .:/app
-              command: >
-                sh -c "pip install -r requirements.txt &&
-                  python manage.py makemigrations &&
-                  python manage.py migrate &&
-                  python manage.py runserver 0.0.0.0:8000"
-              environment:
-                - POSTGRES_DB=${POSTGRES_DB}
-                - POSTGRES_USER=${POSTGRES_USER}
-                - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-                - POSTGRES_HOST=db
-                - POSTGRES_PORT=5432
-                - DEBUG=${DEBUG}
-
-            db:
-              image: postgres:latest
-              container_name: categories_db
-              environment:
-                POSTGRES_USER: ${POSTGRES_USER}
-                POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-                POSTGRES_DB: ${POSTGRES_DB}
-              ports:
-                - "5432:5432"
-              volumes:
-                - postgres_data:/var/lib/postgresql/data
-
-          volumes:
-            postgres_data:
-          EOF
-
-          # Navigate to app directory and run docker-compose
           cd /app
+
+          # Clone repository
+          git clone https://github.com/mohamedelgendyx/nested-categories.git
+          cd /nested-categories
+          
+          # Run docker-compose
           docker-compose up -d
