@@ -1,0 +1,101 @@
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Categories</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+
+<body>
+  <h1>Categories</h1>
+  <div id="categories-container"></div>
+
+  <script>
+    // Initial rendering
+    $(document).ready(fetchCategories);
+
+    // Fetch categories from the server
+    function fetchCategories() {
+      $.get('/api/categories/').done(function(categories) {
+        if (categories.length === 0) {
+          $.when(createCategory('Category A'), createCategory('Category B')).then(fetchCategories);
+        } else {
+          $('#categories-container').empty();
+          const rootCategories = categories.filter(category => category.parent === null).sort((a, b) => a.name.slice(-1).localeCompare(b.name.slice(-1)));
+          rootCategories.forEach(category => { renderCategory(category, categories); });
+          addEventListeners();
+        }
+      });
+    }
+
+    // Create a new category
+    function createCategory(name, parentId = null) {
+      return $.ajax({
+        url: '/api/categories/',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+          name: name,
+          parent: parentId
+        })
+      });
+    }
+
+    // Delete all child categories of a parent category
+    function deleteChildCategories(parentId) {
+      return $.ajax({
+        url: `/api/categories/?parent_id=${parentId}`,
+        method: 'DELETE'
+      });
+    }
+
+    // Helper function to check if a category has children
+    function hasChildren(categoryId, categories) {
+      return categories.some(category => category.parent === categoryId);
+    }
+
+    // Helper function to generate a subcategory name
+    function generateCategoryName(name, index) {
+      const endsWithNumber = /\d$/.test(name);
+      return `SUB ${name}${endsWithNumber ? '-' : ''}${index}`;
+    }
+
+    // Render categories and subcategories
+    function renderCategory(category, categories, container = '#categories-container') {
+      const isChecked = hasChildren(category.id, categories) ? 'checked' : '';
+      const categoryHtml = `
+        <div class="category" data-id="${category.id}" data-name="${category.name}" style="font-size: 20px">
+          <label>
+            <input type="checkbox" class="category-checkbox" ${isChecked}>
+            ${category.name}
+          </label>
+          <div class="subcategories" style="margin: 10px 20px"></div>
+        </div>
+      `;
+      $(container).append(categoryHtml);
+      const subcategories = categories.filter(cat => cat.parent === category.id).sort((a, b) => a.name.slice(-1).localeCompare(b.name.slice(-1)));
+      const subcategoriesContainer = $(container).find(`.category[data-id="${category.id}"] .subcategories`);
+      subcategories.forEach(subcategory => { renderCategory(subcategory, categories, subcategoriesContainer); });
+    }
+
+    // Add event listeners to the category checkboxes
+    function addEventListeners() {
+      $('.category-checkbox').off('change').on('change', function() {
+        const categoryDiv = $(this).closest('.category');
+        const categoryId = categoryDiv.data('id');
+        const categoryName = categoryDiv.data('name');
+        const isChecked = $(this).is(':checked');
+        if (isChecked) {
+          const subcategoryName = `SUB ${categoryName}-1`;
+          // Add two subcategories
+          $.when(
+            createCategory(generateCategoryName(categoryName, 1), categoryId),
+            createCategory(generateCategoryName(categoryName, 2), categoryId)
+          ).then(fetchCategories);
+        } else {
+          // Delete all subcategories
+          deleteChildCategories(categoryId).then(fetchCategories);
+        }
+      });
+    }
+  </script>
+</body>

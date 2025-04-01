@@ -1,0 +1,118 @@
+Resources:
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: nested_categories_app_security_group
+      GroupDescription: Enable SSH, HTTP, HTTPS and the app access.
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          CidrIp: 0.0.0.0/0
+
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+      Path: "/"
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+        - Ref: EC2InstanceRole
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      SecurityGroups:
+        - Ref: InstanceSecurityGroup
+      KeyName: ec2-key
+      ImageId: ami-084568db4383264d4
+      IamInstanceProfile:
+        Ref: EC2InstanceProfile
+      UserData: 
+        Fn::Base64: |
+          #!/bin/bash
+          # Update system
+          yum update -y
+
+          # Install Docker
+          yum install -y docker
+          systemctl start docker
+          systemctl enable docker
+
+          # Install Docker Compose
+          curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          chmod +x /usr/local/bin/docker-compose
+
+          # Create directory for docker-compose file
+          mkdir -p /app
+
+          # Create docker-compose.yaml
+          cat << 'EOF' > /app/docker-compose.yaml
+          # Your docker-compose content goes here
+          services:
+            app:
+              build:
+                context: .
+              container_name: nested_categories
+              ports:
+                - "8000:8000"
+              depends_on:
+                - db
+              volumes:
+                - .:/app
+              command: >
+                sh -c "pip install -r requirements.txt &&
+                  python manage.py makemigrations &&
+                  python manage.py migrate &&
+                  python manage.py runserver 0.0.0.0:8000"
+              environment:
+                - POSTGRES_DB=${POSTGRES_DB}
+                - POSTGRES_USER=${POSTGRES_USER}
+                - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+                - POSTGRES_HOST=db
+                - POSTGRES_PORT=5432
+                - DEBUG=${DEBUG}
+
+            db:
+              image: postgres:latest
+              container_name: categories_db
+              environment:
+                POSTGRES_USER: ${POSTGRES_USER}
+                POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+                POSTGRES_DB: ${POSTGRES_DB}
+              ports:
+                - "5432:5432"
+              volumes:
+                - postgres_data:/var/lib/postgresql/data
+
+          volumes:
+            postgres_data:
+          EOF
+
+          # Navigate to app directory and run docker-compose
+          cd /app
+          docker-compose up -d
